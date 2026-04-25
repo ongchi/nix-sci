@@ -52,6 +52,31 @@
             makeWrapperArgs+=("''${qtWrapperArgs[@]}")
           '';
 
+          postPatch = ''
+            sed -i '/    app = QtWidgets.QApplication(sys.argv)/a\    app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Light)' \
+              vitables/start.py
+          '';
+
+          postInstall = ''
+            mkdir -p $out/Applications/ViTables.app/Contents/MacOS
+            {
+              echo '<?xml version="1.0" encoding="UTF-8"?>'
+              echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+              echo '<plist version="1.0"><dict>'
+              echo '<key>CFBundleExecutable</key><string>vitables</string>'
+              echo '<key>CFBundleIdentifier</key><string>org.vitables.ViTables</string>'
+              echo '<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>'
+              echo '<key>CFBundleName</key><string>ViTables</string>'
+              echo '<key>CFBundlePackageType</key><string>APPL</string>'
+              echo '<key>CFBundleShortVersionString</key><string>3.1.0</string>'
+              echo '<key>CFBundleVersion</key><string>3.1.0</string>'
+              echo '<key>NSHighResolutionCapable</key><true/>'
+              echo '<key>NSRequiresAquaSystemAppearance</key><true/>'
+              echo '</dict></plist>'
+            } > $out/Applications/ViTables.app/Contents/Info.plist
+            ln -s ../../../../bin/vitables $out/Applications/ViTables.app/Contents/MacOS/vitables
+          '';
+
           meta = with pkgs.lib; {
             description = "A viewer for HDF5 files";
             longDescription = ''
