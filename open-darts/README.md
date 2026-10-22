@@ -92,6 +92,13 @@ Upstream builds and tests only with GCC (Linux) and MSVC (Windows). The patch fi
 | `MechDiscretizer::n_unknowns` reads the map `N_UNKNOWNS` during static initialization | `std::out_of_range` at load; `import darts.discretizer` aborts |
 | RPATH `$ORIGIN` (Linux syntax) and `*.dylib` missing from the package data | The compiled linear solvers do not load; open-DARTS silently uses a fallback solver |
 
+## Gmsh node-tag patch (`pkgs/open-darts/gmsh-node-tags.patch`, all platforms)
+
+`Mesh::gmsh_mesh_reading` (C++ discretizer) stored the nodes in file order but used `node tag − 1` as the
+index in the element node lists. For a `.msh` file whose node tags are not 1..N in file order, the elements got
+wrong nodes, without an error. The patch stores each node at index `tag − 1` and stops with an error if the
+node tags are not 1..N.
+
 ## Verification
 
 Upstream suite models (`models/run_test_suite2.py`, `check_performance`) against the Linux reference

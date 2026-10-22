@@ -1,0 +1,32 @@
+--- a/discretizer/src/mesh/mesh.cpp
++++ b/discretizer/src/mesh/mesh.cpp
+@@ -4,6 +4,7 @@
+ #include <algorithm>
+ #include <numeric>
+ #include <unordered_set>
++#include <stdexcept>
+ 
+ #include "mesh.h"
+ #include "mshio/mshio.h"
+@@ -70,14 +71,18 @@
+ 	for (const auto& block : spec.nodes.entity_blocks)
+ 		num_of_nodes += static_cast<index_t>(block.num_nodes_in_block);
+ 
+-	// reserve memory for points
+-	nodes.reserve(num_of_nodes);
++	// Elements refer to nodes by tag (index = tag - 1 below), and Gmsh does not
++	// write the node tags in file order. Store each node at index tag - 1.
++	if (spec.nodes.min_node_tag != 1 || spec.nodes.max_node_tag != static_cast<size_t>(num_of_nodes))
++		throw std::invalid_argument("Node tags in " + filename + " must be 1.." + std::to_string(num_of_nodes) +
++			" (got " + std::to_string(spec.nodes.min_node_tag) + ".." + std::to_string(spec.nodes.max_node_tag) + ")");
++	nodes.resize(num_of_nodes);
+ 
+ 	// insert all the points
+ 	for (const auto& block : spec.nodes.entity_blocks)
+ 	{
+ 		for (index_t i = 0; i < block.num_nodes_in_block; i++)
+-			nodes.emplace_back(block.data[ND * i], block.data[ND * i + 1], block.data[ND * i + 2]);
++			nodes[block.tags[i] - 1] = Vector3(block.data[ND * i], block.data[ND * i + 1], block.data[ND * i + 2]);
+ 	}
+ 
+ 	// count all the elements

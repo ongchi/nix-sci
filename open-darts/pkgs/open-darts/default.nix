@@ -53,7 +53,11 @@ python3Packages.buildPythonPackage rec {
   # compiled linear solvers not loaded (silent fallback to a Python solver)
   #   - RPATH $ORIGIN -> @loader_path on Apple
   #   - libopendarts_linear_solvers.dylib added to the package data
-  patches = [ ./macos.patch ];
+  #
+  # gmsh-node-tags.patch (all platforms): Mesh::gmsh_mesh_reading stored the
+  # nodes in file order but indexes them by tag - 1, so a .msh whose node tags
+  # are not 1..N in file order gave elements with wrong nodes.
+  patches = [ ./macos.patch ./gmsh-node-tags.patch ];
 
   # pybind11 is added with add_subdirectory and writes its build tree next to
   # its sources, so it needs a writable copy in thirdparty/.
