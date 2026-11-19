@@ -51,7 +51,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   # TODO: Test log printing should probably be done better
   passthru = {
-    inherit withParmetis;
+    inherit petsc withParmetis;
     # h5py = petsc.python3.pkgs.h5py.override { inherit (petsc) hdf5; };
     tests = {
       main =

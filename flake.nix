@@ -121,7 +121,7 @@
           pflotran = pkgs.mkShell {
             buildInputs = [
               pflotran.petsc
-              pflotran.petsc.mpi
+              pflotran.petsc.petscPackages.mpi
             ];
             shellHook = ''
               export PETSC_DIR=${pflotran.petsc}
