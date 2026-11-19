@@ -1,0 +1,119 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 627e05a..01d9bf4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,7 +22,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ #                    builds otherwise fail at `import darts.engines` with
+ #                    "libcudss.so.0: cannot open shared object file"). Harmless for
+ #                    non-GPU builds (the extra entry just points at darts/linear_solvers/).
+-set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/linear_solvers")
++if(APPLE)
++  # The macOS loader does not know $ORIGIN; @loader_path is its equivalent.
++  set(CMAKE_INSTALL_RPATH "@loader_path;@loader_path/linear_solvers")
++else()
++  set(CMAKE_INSTALL_RPATH "$ORIGIN;$ORIGIN/linear_solvers")
++endif()
+ set(CMAKE_MACOSX_RPATH 1)
+ 
+ # Set DARTS installation folder
+@@ -235,12 +240,10 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+   set(opendarts_cxx_compiler_flags "-O3;-Wall;-Wextra;-Wshadow;-Wformat=2;-Wunused;-fPIC")
+ 
+   # Linker flags
+-  # Reasons:
+-  #   -Wl,-no_compact: used because in Clang compilers we get linker warning of
+-  #                    being unable to create compact unwinding. This is relevant
+-  #                    for efficient exceptions, but this comes from SuperLU, so
+-  #                    we deactivate compact unwinding warnings.
+-  set(opendarts_cxx_linker_flags "-Wl,-no_compact_unwind")
++  # No -Wl,-no_compact_unwind: on macOS arm64 it drops __unwind_info, so no
++  # C++ exception can be caught (pybind11 duplicate-registration errors in
++  # interpolators then abort the import).
++  set(opendarts_cxx_linker_flags "")
+ 
+   if(${OPENDARTS_CONFIG} STREQUAL "MT" OR GPU_CONFIG)
+     # Same MT-or-GPU OpenMP policy as the GNU block above.
+diff --git a/discretizer/src/approximation.h b/discretizer/src/approximation.h
+index 6a81f0e..91c47dd 100644
+--- a/discretizer/src/approximation.h
++++ b/discretizer/src/approximation.h
+@@ -255,8 +255,8 @@ namespace dis
+       }()...
+     };
+ 
+-    constexpr index_t nb1 = ap1.n_block;
+-    constexpr index_t nb2 = ap2.n_block;
++    constexpr index_t nb1 = LinearApproximation<VarNames1...>::n_block;
++    constexpr index_t nb2 = LinearApproximation<VarNames2...>::n_block;
+     constexpr index_t nb = res.n_block;
+ 
+     constexpr auto var_sizes2 = std::array{ var_block_size<VarNames2>... };
+diff --git a/discretizer/src/mech_discretizer.cpp b/discretizer/src/mech_discretizer.cpp
+index 9cc4c8d..eb6adcc 100644
+--- a/discretizer/src/mech_discretizer.cpp
++++ b/discretizer/src/mech_discretizer.cpp
+@@ -14,8 +14,10 @@ using std::fill_n;
+ using std::copy_n;
+ using utils::get_valarray_from_array;
+ 
++// Constant initialization: the dynamic initialization of a template static
++// member is unordered, so N_UNKNOWNS may still be empty here (clang).
+ template <MechDiscretizerMode MODE>
+-const uint8_t MechDiscretizer<MODE>::n_unknowns = N_UNKNOWNS.at(MODE);
++const uint8_t MechDiscretizer<MODE>::n_unknowns = MODE == POROELASTIC ? ND + 1 : ND + 2;
+ 
+ // this matrix W helps to translate elasticity operator to simpler form
+ template <MechDiscretizerMode MODE>
+@@ -1036,5 +1038,5 @@ void MechDiscretizer<MODE>::calc_cell_centered_stress_velocity_approximations()
+ }
+ 
+ 
+-template class MechDiscretizer<POROELASTIC>;
+-template class MechDiscretizer<THERMOPOROELASTIC>;
+\ No newline at end of file
++template class dis::MechDiscretizer<POROELASTIC>;
++template class dis::MechDiscretizer<THERMOPOROELASTIC>;
+\ No newline at end of file
+diff --git a/engines/src/mech/pm_discretizer.cpp b/engines/src/mech/pm_discretizer.cpp
+index 0a19672..c094ded 100644
+--- a/engines/src/mech/pm_discretizer.cpp
++++ b/engines/src/mech/pm_discretizer.cpp
+@@ -2,6 +2,7 @@
+ #include "matrix.h"
+ #include <iostream>
+ #include <unordered_set>
++#include <utility>
+ #include <assert.h>
+ #include "contact.h"
+ 
+@@ -961,7 +962,7 @@ void pm_discretizer::reconstruct_gradients_per_cell(value_t dt)
+ 					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
+ 					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
+ 						{ BLOCK_SIZE, BLOCK_SIZE },
+-						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(	st_id * BLOCK_SIZE,
++						{ (size_t)rhs_mult.N, 1 }) -= std::as_const(frac_grad_mult)(	st_id * BLOCK_SIZE,
+ 																		{ BLOCK_SIZE, BLOCK_SIZE },
+ 																		{ (size_t)frac_grad_mult.N, 1});
+ 				}
+@@ -2010,7 +2011,7 @@ void pm_discretizer::reconstruct_gradients_thermal_per_cell(value_t dt)
+ 					else { id = st.size(); st.push_back(frac_grad.stencil[st_id]); }
+ 					rhs_mult(BLOCK_SIZE * face_id1 * rhs_mult.N + BLOCK_SIZE * id,
+ 						{ BLOCK_SIZE, BLOCK_SIZE },
+-						{ (size_t)rhs_mult.N, 1 }) -= frac_grad_mult(st_id * BLOCK_SIZE,
++						{ (size_t)rhs_mult.N, 1 }) -= std::as_const(frac_grad_mult)(st_id * BLOCK_SIZE,
+ 							{ BLOCK_SIZE, BLOCK_SIZE },
+ 							{ (size_t)frac_grad_mult.N, 1 });
+ 				}
+diff --git a/pyproject.toml b/pyproject.toml
+index 44d4aac..c7783f4 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -64,7 +64,7 @@ exclude = ["discretizer", "engines", "models", "linear_solvers", "docs", "thirdp
+ 
+ [tool.setuptools.package-data]
+ darts = ['*.pyd', '*.so', '*.dll', 'CHANGELOG.md', 'build_info.txt', 'libstdc++.so.6']
+-"darts.linear_solvers" = ['*.pyd', '*.so', '*.dll', 'libcudss.so*']
++"darts.linear_solvers" = ['*.pyd', '*.so', '*.dll', '*.dylib', 'libcudss.so*']
+ "darts.physics.properties" = ["databases/*"]
+ 
+ # include darts command line interface (cli.py)
