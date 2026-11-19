@@ -7,10 +7,7 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          config.allowUnfree = true;
-        };
+        pkgs = import nixpkgs { inherit system; };
 
         stdenv = pkgs.stdenv;
 
@@ -48,6 +45,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = [
             pflotran.petsc
+            pflotran.petsc.mpi
           ];
           shellHook = ''
             export PETSC_DIR=${pflotran.petsc}
